@@ -168,7 +168,7 @@ class Generator(Model):
         half_image = int(image_size / 2)
         data_shape = (X.shape[0], image_size, half_image, input_space.num_channels)
 
-        noise = self.theano_rng.normal(size=data_shape, dtype='float32')
+        noise = self.theano_rng.normal(size=data_shape, dtype='float64')
         Xg = T.set_subtensor(X[:,:,half_image:,:], noise)
         sampled_part, noise =  self.mlp.dropout_fprop(Xg, default_input_include_prob=default_input_include_prob, default_input_scale=default_input_scale), noise
         sampled_part = sampled_part.reshape(data_shape)
@@ -205,11 +205,11 @@ class Generator(Model):
         if not hasattr(self, 'noise'):
             self.noise = "gaussian"
         if self.noise == "uniform":
-            return self.theano_rng.uniform(low=-np.sqrt(3), high=np.sqrt(3), size=size, dtype='float32')
+            return self.theano_rng.uniform(low=-np.sqrt(3), high=np.sqrt(3), size=size, dtype='float64')
         elif self.noise == "gaussian":
-            return self.theano_rng.normal(size=size, dtype='float32')
+            return self.theano_rng.normal(size=size, dtype='float64')
         elif self.noise == "spherical":
-            noise = self.theano_rng.normal(size=size, dtype='float32')
+            noise = self.theano_rng.normal(size=size, dtype='float64')
             noise = noise / T.maximum(1e-7, T.sqrt(T.sqr(noise).sum(axis=1))).dimshuffle(0, 'x')
             return noise
         else:
@@ -256,7 +256,7 @@ class IntrinsicDropoutGenerator(Generator):
         if all_g_layers:
             raise NotImplementedError()
         n = self.mlp.get_input_space().get_total_dimension()
-        noise = self.theano_rng.normal(size=(num_samples, n), dtype='float32')
+        noise = self.theano_rng.normal(size=(num_samples, n), dtype='float64')
         formatted_noise = VectorSpace(n).format_as(noise, self.mlp.get_input_space())
         # ignores dropout args
         default_input_include_prob = self.default_input_include_prob
@@ -304,8 +304,8 @@ class AdversaryCost2(DefaultDataSpecsMixin, Cost):
         # If the corresponding ever_train_* is False, these have
         # no effect.
         self.now_train_generator = sharedX(init_now_train_generator)
-        self.now_train_discriminator = sharedX(numpy.array(1., dtype='float32'))
-        self.now_train_inference = sharedX(numpy.array(1., dtype='float32'))
+        self.now_train_discriminator = sharedX(numpy.array(1., dtype='float64'))
+        self.now_train_inference = sharedX(numpy.array(1., dtype='float64'))
 
     def expr(self, model, data, **kwargs):
         S, d_obj, g_obj, i_obj = self.get_samples_and_objectives(model, data)
@@ -403,7 +403,7 @@ class AdversaryCost2(DefaultDataSpecsMixin, Cost):
             g_grads = [g_grad * scale for g_grad in g_grads]
 
         rval = OrderedDict()
-        zeros = itertools.repeat(theano.tensor.constant(0., dtype='float32'))
+        zeros = itertools.repeat(theano.tensor.constant(0., dtype='float64'))
         if self.ever_train_discriminator:
             rval.update(OrderedDict(safe_zip(d_params, [self.now_train_discriminator * dg for dg in d_grads])))
         else:
@@ -438,11 +438,11 @@ class AdversaryCost2(DefaultDataSpecsMixin, Cost):
 
         y_hat = d.fprop(data)
 
-        rval['false_negatives'] = T.cast((y_hat < 0.5).mean(), 'float32')
+        rval['false_negatives'] = T.cast((y_hat < 0.5).mean(), 'float64')
 
         samples = g.sample(m)
         y_hat = d.fprop(samples)
-        rval['false_positives'] = T.cast((y_hat > 0.5).mean(), 'float32')
+        rval['false_positives'] = T.cast((y_hat > 0.5).mean(), 'float64')
         # y = T.alloc(0., m, 1)
         cost = d.cost_from_X((samples, y_hat))
         sample_grad = T.grad(-cost, samples)
@@ -569,7 +569,7 @@ class ActivateGenerator(TrainExtension):
 
     def on_monitor(self, model, dataset, algorithm):
         if self.cur_epoch == self.active_after:
-            algorithm.cost.now_train_generator.set_value(np.array(self.value, dtype='float32'))
+            algorithm.cost.now_train_generator.set_value(np.array(self.value, dtype='float64'))
         self.cur_epoch += 1
 
 class InpaintingAdversaryCost(DefaultDataSpecsMixin, Cost):
@@ -602,8 +602,8 @@ class InpaintingAdversaryCost(DefaultDataSpecsMixin, Cost):
         # If the corresponding ever_train_* is False, these have
         # no effect.
         self.now_train_generator = sharedX(init_now_train_generator)
-        self.now_train_discriminator = sharedX(numpy.array(1., dtype='float32'))
-        self.now_train_inference = sharedX(numpy.array(1., dtype='float32'))
+        self.now_train_discriminator = sharedX(numpy.array(1., dtype='float64'))
+        self.now_train_inference = sharedX(numpy.array(1., dtype='float64'))
 
     def expr(self, model, data, **kwargs):
         S, d_obj, g_obj, i_obj = self.get_samples_and_objectives(model, data)
@@ -683,12 +683,12 @@ class InpaintingAdversaryCost(DefaultDataSpecsMixin, Cost):
         if self.ever_train_discriminator:
             rval.update(OrderedDict(safe_zip(d_params, [self.now_train_discriminator * dg for dg in d_grads])))
         else:
-            rval.update(OrderedDict(zip(d_params, itertools.repeat(theano.tensor.constant(0., dtype='float32')))))
+            rval.update(OrderedDict(zip(d_params, itertools.repeat(theano.tensor.constant(0., dtype='float64')))))
 
         if self.ever_train_generator:
             rval.update(OrderedDict(safe_zip(g_params, [self.now_train_generator * gg for gg in g_grads])))
         else:
-            rval.update(OrderedDict(zip(g_params, itertools.repeat(theano.tensor.constant(0., dtype='float32')))))
+            rval.update(OrderedDict(zip(g_params, itertools.repeat(theano.tensor.constant(0., dtype='float64')))))
 
         if self.ever_train_inference and model.inferer is not None:
             i_params = model.inferer.get_params()
@@ -714,11 +714,11 @@ class InpaintingAdversaryCost(DefaultDataSpecsMixin, Cost):
 
         y_hat = d.fprop(data)
 
-        rval['false_negatives'] = T.cast((y_hat < 0.5).mean(), 'float32')
+        rval['false_negatives'] = T.cast((y_hat < 0.5).mean(), 'float64')
 
         samples, noise = g.inpainting_sample_and_noise(data)
         y_hat = d.fprop(samples)
-        rval['false_positives'] = T.cast((y_hat > 0.5).mean(), 'float32')
+        rval['false_positives'] = T.cast((y_hat > 0.5).mean(), 'float64')
         # y = T.alloc(0., m, 1)
         cost = d.cost_from_X((samples, y_hat))
         sample_grad = T.grad(-cost, samples)
@@ -741,7 +741,7 @@ class Cycler(object):
 
     def __call__(self, sgd):
         self.i = (self.i + 1) % self.k
-        sgd.cost.now_train_generator.set_value(np.cast['float32'](self.i == 0))
+        sgd.cost.now_train_generator.set_value(np.cast['float64'](self.i == 0))
 
 class NoiseCat(Layer):
 
@@ -901,8 +901,8 @@ class ThresholdedAdversaryCost(DefaultDataSpecsMixin, Cost):
         # If the corresponding ever_train_* is False, these have
         # no effect.
         self.now_train_generator = sharedX(init_now_train_generator)
-        self.now_train_discriminator = sharedX(numpy.array(1., dtype='float32'))
-        self.now_train_inference = sharedX(numpy.array(1., dtype='float32'))
+        self.now_train_discriminator = sharedX(numpy.array(1., dtype='float64'))
+        self.now_train_inference = sharedX(numpy.array(1., dtype='float64'))
 
     def expr(self, model, data, **kwargs):
         S, d_obj, g_obj, i_obj = self.get_samples_and_objectives(model, data)
@@ -1004,7 +1004,7 @@ class ThresholdedAdversaryCost(DefaultDataSpecsMixin, Cost):
             g_grads = [g_grad * scale for g_grad in g_grads]
 
         rval = OrderedDict()
-        zeros = itertools.repeat(theano.tensor.constant(0., dtype='float32'))
+        zeros = itertools.repeat(theano.tensor.constant(0., dtype='float64'))
         if self.ever_train_discriminator:
             rval.update(OrderedDict(safe_zip(d_params, [self.now_train_discriminator * dg for dg in d_grads])))
         else:
@@ -1039,11 +1039,11 @@ class ThresholdedAdversaryCost(DefaultDataSpecsMixin, Cost):
 
         y_hat = d.fprop(data)
 
-        rval['false_negatives'] = T.cast((y_hat < 0.5).mean(), 'float32')
+        rval['false_negatives'] = T.cast((y_hat < 0.5).mean(), 'float64')
 
         samples = g.sample(m)
         y_hat = d.fprop(samples)
-        rval['false_positives'] = T.cast((y_hat > 0.5).mean(), 'float32')
+        rval['false_positives'] = T.cast((y_hat > 0.5).mean(), 'float64')
         # y = T.alloc(0., m, 1)
         cost = d.cost_from_X((samples, y_hat))
         sample_grad = T.grad(-cost, samples)
@@ -1120,8 +1120,8 @@ class LazyAdversaryCost(DefaultDataSpecsMixin, Cost):
         # If the corresponding ever_train_* is False, these have
         # no effect.
         self.now_train_generator = sharedX(init_now_train_generator)
-        self.now_train_discriminator = sharedX(numpy.array(1., dtype='float32'))
-        self.now_train_inference = sharedX(numpy.array(1., dtype='float32'))
+        self.now_train_discriminator = sharedX(numpy.array(1., dtype='float64'))
+        self.now_train_inference = sharedX(numpy.array(1., dtype='float64'))
 
     def expr(self, model, data, **kwargs):
         S, d_obj, g_obj, i_obj = self.get_samples_and_objectives(model, data)
@@ -1234,7 +1234,7 @@ class LazyAdversaryCost(DefaultDataSpecsMixin, Cost):
             g_grads = [g_grad * scale for g_grad in g_grads]
 
         rval = OrderedDict()
-        zeros = itertools.repeat(theano.tensor.constant(0., dtype='float32'))
+        zeros = itertools.repeat(theano.tensor.constant(0., dtype='float64'))
         if self.ever_train_discriminator:
             rval.update(OrderedDict(safe_zip(d_params, [self.now_train_discriminator * dg for dg in d_grads])))
         else:
@@ -1269,11 +1269,11 @@ class LazyAdversaryCost(DefaultDataSpecsMixin, Cost):
 
         y_hat = d.fprop(data)
 
-        rval['false_negatives'] = T.cast((y_hat < 0.5).mean(), 'float32')
+        rval['false_negatives'] = T.cast((y_hat < 0.5).mean(), 'float64')
 
         samples = g.sample(m)
         y_hat = d.fprop(samples)
-        rval['false_positives'] = T.cast((y_hat > 0.5).mean(), 'float32')
+        rval['false_positives'] = T.cast((y_hat > 0.5).mean(), 'float64')
         # y = T.alloc(0., m, 1)
         cost = d.cost_from_X((samples, y_hat))
         sample_grad = T.grad(-cost, samples)
